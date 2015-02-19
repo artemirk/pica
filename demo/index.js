@@ -77,6 +77,7 @@ var updateResized = _.debounce(function () {
     quality: quality,
     unsharpAmount: unsharpAmount,
     unsharpThreshold: unsharpThreshold,
+    blurKernelRadius: isNaN(blurKernelRadius)? 1.0: blurKernelRadius,
     transferable: true
   }, function (err) {
     time = (performance.now() - start).toFixed(2);
@@ -103,6 +104,7 @@ var img = new Image();
 var quality = Number($('#pica-quality').val());
 var unsharpAmount = Number($('#pica-unsharp-amount').val());
 var unsharpThreshold = Number($('#pica-unsharp-threshold').val());
+var blurKernelRadius = parseFloat($('#pica-blur-kernel-radius').val());
 
 img.src = imageEncoded;
 
@@ -126,6 +128,10 @@ $('#pica-unsharp-amount').on('change', function () {
 });
 $('#pica-unsharp-threshold').on('change', function () {
   unsharpThreshold = Number($('#pica-unsharp-threshold').val());
+  updateResized();
+});
+$('#pica-blur-kernel-radius').on('change', function () {
+  blurKernelRadius = parseFloat($('#pica-blur-kernel-radius').val());
   updateResized();
 });
 

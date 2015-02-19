@@ -15,6 +15,7 @@ if (WORKER) {
   } catch (__) {
     WORKER = false;
   }
+  WORKER = false;
 }
 
 var resize       = require('./lib/resize');
@@ -46,7 +47,8 @@ function resizeBuffer(options, callback) {
     quality:  options.quality,
     alpha:    options.alpha,
     unsharpAmount:    options.unsharpAmount,
-    unsharpThreshold: options.unsharpThreshold
+    unsharpThreshold: options.unsharpThreshold,
+    blurKernelRadius: options.blurKernelRadius
   };
 
   if (WORKER && exports.WW) {
@@ -121,6 +123,7 @@ function resizeCanvas(from, to, options, callback) {
     alpha:    options.alpha,
     unsharpAmount:    options.unsharpAmount,
     unsharpThreshold: options.unsharpThreshold,
+    blurKernelRadius: options.blurKernelRadius,
     transferable: true
   };
 
@@ -494,7 +497,8 @@ function resize(options) {
   var quality = options.quality === undefined ? 3 : options.quality;
   var alpha = options.alpha || false;
   var unsharpAmount = options.unsharpAmount === undefined ? 0 : (options.unsharpAmount|0);
-  var unsharpThreshold = options.unsharpThreshold === undefined ? 0 : (options.unsharpThreshold|0);
+  var unsharpThreshold = options.unsharpThreshold === undefined ? 0 : (options.unsharpThreshold | 0);
+  var blurKernelRadius = options.blurKernelRadius === undefined ? 1.0 : options.blurKernelRadius;
 
   if (srcW < 1 || srcH < 1 || destW < 1 || destH < 1) { return []; }
 
@@ -519,7 +523,7 @@ function resize(options) {
   }
 
   if (unsharpAmount) {
-    unsharp(dest, destW, destH, unsharpAmount, 1.0, unsharpThreshold);
+    unsharp(dest, destW, destH, unsharpAmount, blurKernelRadius, unsharpThreshold);
   }
 
   return dest;
@@ -546,6 +550,7 @@ module.exports = resize;
 
 
 var blur = require('./blur');
+var blur2 = require('./blur2');
 
 
 function clampTo8(i) { return i < 0 ? 0 : (i > 255 ? 255 : i); }
@@ -574,6 +579,10 @@ function greyscale(src, srcW, srcH) {
 // on practice we need radius 0.3..2.0. Use 1.0 now.
 //
 function unsharp(src, srcW, srcH, amount, radius, threshold) {
+
+  blur2(src, srcW, srcH, radius);
+  return;
+  
   var x, y, c, diff = 0, corr, srcPtr;
 
   // Normalized delta multiplier. Expect that:
@@ -619,7 +628,7 @@ function unsharp(src, srcW, srcH, amount, radius, threshold) {
 
 module.exports = unsharp;
 
-},{"./blur":1}],4:[function(require,module,exports){
+}, {"./blur": 1, "./blur2": 8}], 4: [function (require, module, exports) {
 // Proxy to simplify split between webworker/plain calls
 'use strict';
 
@@ -704,6 +713,131 @@ module.exports = function (fn) {
         new Blob([src], { type: 'text/javascript' })
     ));
 };
+
+},{}],8:[function(require,module,exports){
+
+//Blur2 implementation
+
+'use strict';
+
+function boxesForGauss(sigma, n) {
+  var wl = Math.sqrt((12 * sigma * sigma / n) + 1) >> 0;  // Ideal averaging filter width 
+  if (wl % 2 == 0) wl--;
+  var wu = wl + 2;
+  var m = ((12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4)) >> 0;
+  var sizes = []; for (var i = 0; i < n; i++) sizes.push(i < m ? wl : wu);
+  return sizes;
+}
+
+function boxBlurH(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
+  var iarr = 1 / (r + r + 1);
+  for (var i = 0; i < h; i++) {
+    var ti = i * w, li = ti, ri = ti + r;
+    var fv = scl[(ti * sclS) + sclO], lv = scl[(ti + w - 1) * sclS + sclO], val = (r + 1) * fv;
+    for (var j = 0    ; j < r    ; j++) { val += scl[(ti + j) * sclS + sclO]; }
+    for (var j = 0    ; j <= r   ; j++) { val += scl[(ri++) * sclS + sclO] - fv                       ; tcl[(ti++) * tclS + tclO] = (val * iarr) >> 0; }
+    for (var j = r + 1; j < w - r; j++) { val += scl[(ri++) * sclS + sclO] - scl[(li++) * sclS + sclO]; tcl[(ti++) * tclS + tclO] = (val * iarr) >> 0; }
+    for (var j = w - r; j < w    ; j++) { val += lv                        - scl[(li++) * sclS + sclO]; tcl[(ti++) * tclS + tclO] = (val * iarr) >> 0; }
+  }
+}
+function boxBlurT(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
+  var iarr = 1 / (r + r + 1);
+  for (var i = 0; i < w; i++) {
+    var ti = i, li = ti, ri = ti + r * w;
+    var fv = scl[(ti * sclS) + sclO], lv = scl[(ti + w * (h - 1)) * sclS + sclO], val = (r + 1) * fv;
+    for (var j = 0    ; j < r    ; j++) { val += scl[(ti + j * w) * sclS + sclO]; }
+    for (var j = 0    ; j <= r   ; j++) { val += scl[ri * sclS + sclO] - fv                   ; tcl[ti * tclS + tclO] = (val * iarr) >> 0; ri += w; ti += w; }
+    for (var j = r + 1; j < h - r; j++) { val += scl[ri * sclS + sclO] - scl[li * sclS + sclO]; tcl[ti * tclS + tclO] = (val * iarr) >> 0; li += w; ri += w; ti += w; }
+    for (var j = h - r; j < h    ; j++) { val += lv                    - scl[li * sclS + sclO]; tcl[ti * tclS + tclO] = (val * iarr) >> 0; li += w; ti += w; }
+  }
+}
+
+function boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
+  if (scl.length == tcl.length) for (var i = 0; i < scl.length; i++) tcl[i] = scl[i];
+  else return;
+  boxBlurH(tcl, tclO, tclS, scl, sclO, sclS, w, h, r);
+  boxBlurT(scl, sclO, sclS, tcl, tclO, tclS, w, h, r);
+}
+
+function gaussBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
+  var bxs = boxesForGauss(r, 3);
+  boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, (bxs[0] - 1) >> 1);
+  boxBlur(tcl, tclO, tclS, scl, sclO, sclS, w, h, (bxs[1] - 1) >> 1);
+  boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, (bxs[2] - 1) >> 1);
+}
+
+// Convert RGBA -> To HSL (Alpha channel is ignored)
+// return L channel value
+// Algorithm is inspired by 4th algorithm described in 
+// http://blog.ivank.net/fastest-gaussian-blur.html
+function rgbToHsl(rgbArr, rgbPtr, hslArr, hslPtr) {
+  var r = rgbArr[rgbPtr]/255, g = rgbArr[rgbPtr + 1]/255, b = rgbArr[rgbPtr + 2]/255;
+  var max = Math.max(r, g, b), min = Math.min(r, g, b);
+  var h, s, l = (max + min) / 2;
+
+  if (max == min) {
+    h = s = 0; // achromatic
+  } else {
+    var d = max - min;
+    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+    switch (max) {
+      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+      case g: h = (b - r) / d + 2; break;
+      case b: h = (r - g) / d + 4; break;
+    }
+    h /= 6;
+  }
+  hslArr[hslPtr] = h;
+  hslArr[hslPtr + 1] = s;
+  hslArr[hslPtr + 2] = l;
+
+  return l;
+}
+
+//Convert H, S, L values  -> To RGB(A) (Alpha channel is not touched)
+function hslToRgb(h, s, l, rgbArr, rgbPtr) {
+  var r, g, b;
+
+  function hue2rgb(p, q, t) {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  }
+
+  if (s == 0) {
+    r = g = b = l; // achromatic
+  } else {
+    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    var p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1 / 3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1 / 3);
+  }
+
+  rgbArr[rgbPtr] = Math.round(r * 255);
+  rgbArr[rgbPtr + 1] = Math.round(g * 255);
+  rgbArr[rgbPtr + 2] = Math.round(b * 255);
+
+}
+
+// Blur src array of RGBA channels
+function blur2(src, srcW, srcH, radius) {
+
+  var tmpDst = new Uint8Array(srcW * srcH * 4);
+
+  //Perform blur on R channel
+  gaussBlur(src, 0, 4, tmpDst, 0, 4, srcW, srcH, radius);
+  //Perform blur on G channel
+  gaussBlur(src, 1, 4, tmpDst, 1, 4, srcW, srcH, radius);
+  //Perform blur on B channel
+  gaussBlur(src, 2, 4, tmpDst, 2, 4, srcW, srcH, radius);
+  
+}
+
+module.exports = blur2;
 
 },{}]},{},[])("./")
 });
