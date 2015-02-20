@@ -580,9 +580,6 @@ function greyscale(src, srcW, srcH) {
 //
 function unsharp(src, srcW, srcH, amount, radius, threshold) {
 
-  blur2(src, srcW, srcH, radius);
-  return;
-  
   var x, y, c, diff = 0, corr, srcPtr;
 
   // Normalized delta multiplier. Expect that:
@@ -594,7 +591,8 @@ function unsharp(src, srcW, srcH, amount, radius, threshold) {
   // - speedup blur calc
   //
   var gs = greyscale(src, srcW, srcH);
-  var blured = blur(gs, srcW, srcH, 1);
+  //var blured = blur(gs, srcW, srcH, 1);
+  var blured = blur2(gs, srcW, srcH, radius);
   var fpThreshold = threshold << 8;
   var gsPtr = 0;
 
@@ -718,7 +716,14 @@ module.exports = function (fn) {
 
 //Blur2 implementation
 
-'use strict';
+  'use strict';
+
+// Copy array
+function copy(src, dst)  {
+  if (dst.set) dst.set(src);
+  else  for (var i = 0, l = src.length; i < l; ++i) dest[i] = src[i];
+  return dst;
+}
 
 function boxesForGauss(sigma, n) {
   var wl = Math.sqrt((12 * sigma * sigma / n) + 1) >> 0;  // Ideal averaging filter width 
@@ -753,8 +758,7 @@ function boxBlurT(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
 }
 
 function boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
-  if (scl.length == tcl.length) for (var i = 0; i < scl.length; i++) tcl[i] = scl[i];
-  else return;
+  tcl = copy(scl, tcl);
   boxBlurH(tcl, tclO, tclS, scl, sclO, sclS, w, h, r);
   boxBlurT(scl, sclO, sclS, tcl, tclO, tclS, w, h, r);
 }
@@ -826,15 +830,13 @@ function hslToRgb(h, s, l, rgbArr, rgbPtr) {
 // Blur src array of RGBA channels
 function blur2(src, srcW, srcH, radius) {
 
-  var tmpDst = new Uint8Array(srcW * srcH * 4);
+  var tmpSrc = copy(src, new Uint16Array(srcW * srcH));
+  var tmpDst = new Uint16Array(srcW * srcH);
 
-  //Perform blur on R channel
-  gaussBlur(src, 0, 4, tmpDst, 0, 4, srcW, srcH, radius);
-  //Perform blur on G channel
-  gaussBlur(src, 1, 4, tmpDst, 1, 4, srcW, srcH, radius);
-  //Perform blur on B channel
-  gaussBlur(src, 2, 4, tmpDst, 2, 4, srcW, srcH, radius);
-  
+  //Perform blur on GreyScaled channel
+  gaussBlur(tmpSrc, 0, 1, tmpDst, 0, 1, srcW, srcH, radius);
+
+  return tmpSrc;
 }
 
 module.exports = blur2;
