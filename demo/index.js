@@ -77,7 +77,8 @@ var updateResized = _.debounce(function () {
     quality: quality,
     unsharpAmount: unsharpAmount,
     unsharpThreshold: unsharpThreshold,
-    blurKernelRadius: isNaN(blurKernelRadius)? 1.0: blurKernelRadius,
+    blurKernelRadius: isNaN(blurKernelRadius) ? 1.0 : blurKernelRadius,
+    blurAlgorithm: blurAlgorithm | 0,
     transferable: true
   }, function (err) {
     time = (performance.now() - start).toFixed(2);
@@ -107,6 +108,9 @@ var unsharpAmount = Number($('#pica-unsharp-amount').val());
 $('#pica-unsharp-amount').closest('.pica-options').find('span#value').text(($('#pica-unsharp-amount').val()));
 var unsharpThreshold = Number($('#pica-unsharp-threshold').val());
 $('#pica-unsharp-threshold').closest('.pica-options').find('span#value').text(($('#pica-unsharp-threshold').val()));
+var blurAlgorithm = $('input[name=pica-blur-algorithm]:checked').val();
+if (blurAlgorithm == 0) $('#pica-blur-kernel-radius').val(1.0);
+$('#pica-blur-kernel-radius').prop('disabled', blurAlgorithm == 0);
 var blurKernelRadius = parseFloat($('#pica-blur-kernel-radius').val());
 $('#pica-blur-kernel-radius').closest('.pica-options').find('span#value').text(($('#pica-blur-kernel-radius').val()));
 
@@ -136,6 +140,16 @@ $('#pica-unsharp-threshold').on('change', function () {
 });
 $('#pica-blur-kernel-radius').on('change', function () {
   blurKernelRadius = parseFloat($('#pica-blur-kernel-radius').val());
+  updateResized();
+});
+$('input[name=pica-blur-algorithm]').on('change', function () {
+  blurAlgorithm = $('input[name=pica-blur-algorithm]:checked').val();
+  if (blurAlgorithm == 0) {
+    $el = $('#pica-blur-kernel-radius');
+    $el.val(1.0);
+    $el.closest('.pica-options').find('span#value').text($el.val());
+  }
+  $('#pica-blur-kernel-radius').prop('disabled', blurAlgorithm == 0);
   updateResized();
 });
 

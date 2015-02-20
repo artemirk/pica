@@ -47,7 +47,8 @@ function resizeBuffer(options, callback) {
     alpha:    options.alpha,
     unsharpAmount:    options.unsharpAmount,
     unsharpThreshold: options.unsharpThreshold,
-    blurKernelRadius: options.blurKernelRadius
+    blurKernelRadius: options.blurKernelRadius,
+    blurAlgorithm: options.blurAlgorithm,
   };
 
   if (WORKER && exports.WW) {
@@ -123,6 +124,7 @@ function resizeCanvas(from, to, options, callback) {
     unsharpAmount:    options.unsharpAmount,
     unsharpThreshold: options.unsharpThreshold,
     blurKernelRadius: options.blurKernelRadius,
+    blurAlgorithm: options.blurAlgorithm,
     transferable: true
   };
 
@@ -498,6 +500,7 @@ function resize(options) {
   var unsharpAmount = options.unsharpAmount === undefined ? 0 : (options.unsharpAmount|0);
   var unsharpThreshold = options.unsharpThreshold === undefined ? 0 : (options.unsharpThreshold | 0);
   var blurKernelRadius = options.blurKernelRadius === undefined ? 1.0 : options.blurKernelRadius;
+  var blurAlgorithm = options.blurAlgorithm === undefined ? 0 : options.blurAlgorithm;
 
   if (srcW < 1 || srcH < 1 || destW < 1 || destH < 1) { return []; }
 
@@ -522,7 +525,7 @@ function resize(options) {
   }
 
   if (unsharpAmount) {
-    unsharp(dest, destW, destH, unsharpAmount, blurKernelRadius, unsharpThreshold);
+    unsharp(dest, destW, destH, unsharpAmount, blurKernelRadius, unsharpThreshold, blurAlgorithm);
   }
 
   return dest;
@@ -577,7 +580,7 @@ function greyscale(src, srcW, srcH) {
 // NOTE: radius is ignored to simplify gaussian blur calculation
 // on practice we need radius 0.3..2.0. Use 1.0 now.
 //
-function unsharp(src, srcW, srcH, amount, radius, threshold) {
+function unsharp(src, srcW, srcH, amount, radius, threshold, algorithm) {
 
   var x, y, c, diff = 0, corr, srcPtr;
 
@@ -589,9 +592,9 @@ function unsharp(src, srcW, srcH, amount, radius, threshold) {
   // - prevent color drift
   // - speedup blur calc
   //
+
   var gs = greyscale(src, srcW, srcH);
-  //var blured = blur(gs, srcW, srcH, 1);
-  var blured = blur2(gs, srcW, srcH, radius);
+  var blured = [blur, blur2][algorithm | 0](gs, srcW, srcH, radius);
   var fpThreshold = threshold << 8;
   var gsPtr = 0;
 
