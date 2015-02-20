@@ -714,6 +714,8 @@ module.exports = function (fn) {
 },{}],8:[function(require,module,exports){
 
 //Blur2 implementation
+// Algorithm is inspired by 4th algorithm described in 
+// http://blog.ivank.net/fastest-gaussian-blur.html
 
   'use strict';
 
@@ -767,63 +769,6 @@ function gaussBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, r) {
   boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, (bxs[0] - 1) >> 1);
   boxBlur(tcl, tclO, tclS, scl, sclO, sclS, w, h, (bxs[1] - 1) >> 1);
   boxBlur(scl, sclO, sclS, tcl, tclO, tclS, w, h, (bxs[2] - 1) >> 1);
-}
-
-// Convert RGBA -> To HSL (Alpha channel is ignored)
-// return L channel value
-// Algorithm is inspired by 4th algorithm described in 
-// http://blog.ivank.net/fastest-gaussian-blur.html
-function rgbToHsl(rgbArr, rgbPtr, hslArr, hslPtr) {
-  var r = rgbArr[rgbPtr]/255, g = rgbArr[rgbPtr + 1]/255, b = rgbArr[rgbPtr + 2]/255;
-  var max = Math.max(r, g, b), min = Math.min(r, g, b);
-  var h, s, l = (max + min) / 2;
-
-  if (max == min) {
-    h = s = 0; // achromatic
-  } else {
-    var d = max - min;
-    s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
-    switch (max) {
-      case r: h = (g - b) / d + (g < b ? 6 : 0); break;
-      case g: h = (b - r) / d + 2; break;
-      case b: h = (r - g) / d + 4; break;
-    }
-    h /= 6;
-  }
-  hslArr[hslPtr] = h;
-  hslArr[hslPtr + 1] = s;
-  hslArr[hslPtr + 2] = l;
-
-  return l;
-}
-
-//Convert H, S, L values  -> To RGB(A) (Alpha channel is not touched)
-function hslToRgb(h, s, l, rgbArr, rgbPtr) {
-  var r, g, b;
-
-  function hue2rgb(p, q, t) {
-    if (t < 0) t += 1;
-    if (t > 1) t -= 1;
-    if (t < 1 / 6) return p + (q - p) * 6 * t;
-    if (t < 1 / 2) return q;
-    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
-    return p;
-  }
-
-  if (s == 0) {
-    r = g = b = l; // achromatic
-  } else {
-    var q = l < 0.5 ? l * (1 + s) : l + s - l * s;
-    var p = 2 * l - q;
-    r = hue2rgb(p, q, h + 1 / 3);
-    g = hue2rgb(p, q, h);
-    b = hue2rgb(p, q, h - 1 / 3);
-  }
-
-  rgbArr[rgbPtr] = Math.round(r * 255);
-  rgbArr[rgbPtr + 1] = Math.round(g * 255);
-  rgbArr[rgbPtr + 2] = Math.round(b * 255);
-
 }
 
 // Blur src array of 1 packed greyscaled channel
