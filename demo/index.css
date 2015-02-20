@@ -60,3 +60,6 @@ body {
   padding: 4px 50px 2px;
   text-align: center;
 }
+.pica-options span#value {
+  font-weight:bold;
+}

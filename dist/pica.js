@@ -15,7 +15,6 @@ if (WORKER) {
   } catch (__) {
     WORKER = false;
   }
-  WORKER = false;
 }
 
 var resize       = require('./lib/resize');
@@ -827,7 +826,7 @@ function hslToRgb(h, s, l, rgbArr, rgbPtr) {
 
 }
 
-// Blur src array of RGBA channels
+// Blur src array of 1 packed greyscaled channel
 function blur2(src, srcW, srcH, radius) {
 
   var tmpSrc = copy(src, new Uint16Array(srcW * srcH));
